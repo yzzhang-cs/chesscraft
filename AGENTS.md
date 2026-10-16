@@ -4,29 +4,45 @@ A Godot 4.7 game. Engine version is pinned to `4.7.2.stable.official.ed1daf0bf`.
 
 ## Running Godot
 
-Run every Godot invocation through `tools/godot.ps1`. It is the single source of
-truth for the engine's location, and it exists because two environment facts are
-easy to get wrong:
+Godot is installed at `C:\tools\godot\4.7.2\` and that directory is on the user
+PATH, so invoke it by bare name:
 
-- It selects `Godot_v4.7.2-stable_win64_console.exe`. The plain
-  `Godot_v4.7.2-stable_win64.exe` is a GUI-subsystem binary, so its output never
-  reaches the calling console and every command looks silent.
-- It repoints `APPDATA` and `LOCALAPPDATA` at repo-local `.godot-userdata/`.
-  Godot otherwise writes editor settings, caches and `user://` outside the
-  workspace, where the agent sandbox denies them; the run then fails with
-  `Cannot save file` / `Could not open 'user://'`. Set
-  `GODOT_USE_SYSTEM_APPDATA=1` to use the real profile instead.
+- `godot` — the editor build (GUI subsystem). Use it to open the editor.
+- `godot_console` — the same engine, launched attached to the calling console. Use
+  this for all command-line work, so output is visible and exit codes mean
+  something.
+
+The two files must be renamed and moved as a pair. The `_console` stub finds its
+engine by stripping `_console` from its own filename, so renaming only the engine
+makes the stub fail with `Main executable ... not found`.
 
 | Goal | Command |
 | --- | --- |
-| Engine version | `pwsh -NoProfile -File tools/godot.ps1 --version` |
-| Import assets after adding files | `pwsh -NoProfile -File tools/godot.ps1 --headless --path . --import` |
-| Parse-check one script | `pwsh -NoProfile -File tools/godot.ps1 --headless --path . --check-only --script res://path/to.gd` |
-| Run a headless script | `pwsh -NoProfile -File tools/godot.ps1 --headless --path . --script res://tests/smoke_test.gd` |
-| Run the game headless | `pwsh -NoProfile -File tools/godot.ps1 --headless --path . --quit-after 120` |
+| Engine version | `godot_console --version` |
+| Import assets after adding files | `godot_console --headless --path . --import` |
+| Parse-check one script | `godot_console --headless --path . --check-only --script res://path/to.gd` |
+| Run a headless script | `godot_console --headless --path . --script res://tests/smoke_test.gd` |
+| Run the game headless | `godot_console --headless --path . --quit-after 120` |
 
 The last row needs `run/main_scene` set in `project.godot`; without it Godot exits
 1 with `Can't run project: no main scene defined in the project.`
+
+## `user://` under the agent sandbox
+
+Godot stores a running project's `user://` directory (saves, logs, config) in
+`%APPDATA%\Godot\app_userdata\<project>`, which is outside the agent's writable
+workspace. Those writes fail with `Cannot write user://...`, and a test that needs
+them exits 1. Godot has no `--user-data-dir` flag, so redirect the data
+directories in that one command:
+
+```powershell
+$env:APPDATA      = "$PWD/.godot-userdata/AppData/Roaming"
+$env:LOCALAPPDATA = "$PWD/.godot-userdata/AppData/Local"
+godot_console --headless --path . --script res://tests/smoke_test.gd
+```
+
+Commands that never touch `user://` — `--version`, `--check-only`, `--import` —
+run plain. `.godot-userdata/` is git-ignored.
 
 ## Gate
 
