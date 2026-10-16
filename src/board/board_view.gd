@@ -6,6 +6,10 @@ extends Node2D
 ## Japanese glyphs. Reads geometry from the pure `Board` model and state from
 ## the pure `Match` model.
 ##
+## Also handles click-to-move: clicking a piece selects it and highlights its
+## legal destinations; clicking a highlighted point applies the move through the
+## Match and emits `move_made`.
+##
 ## Point (column, row) maps to screen space with column 1 on the left and
 ## row 1 at the bottom (Side 1's back rank).
 
@@ -32,9 +36,23 @@ const SHOGI_PIECE_FILL := Color(0.98, 0.94, 0.80)
 const SHOGI_PIECE_BORDER := Color(0.15, 0.12, 0.09)
 const SHOGI_GLYPH := Color(0.08, 0.08, 0.08)
 
+const SELECT_COLOR := Color(0.20, 0.45, 0.90)
+const LEGAL_COLOR := Color(0.10, 0.55, 0.20)
+const CAPTURE_COLOR := Color(0.85, 0.15, 0.10)
+const HIGHLIGHT_WIDTH := 3.0
+
+
+## Emitted after a move is applied, so the caller can refresh a turn indicator.
+signal move_made
 
 ## The match whose pieces to draw, or null to draw only the empty board.
 var match: Match
+
+## The currently selected piece, or null.
+var selected: Piece
+
+## The selected piece's legal destinations, drawn as highlights.
+var _legal: Array[Vector2i] = []
 
 var _font: Font
 
@@ -53,6 +71,7 @@ func _draw() -> void:
 	_draw_grid()
 	_draw_palaces()
 	_draw_pieces()
+	_draw_highlights()
 
 
 func _draw_background() -> void:
@@ -110,6 +129,70 @@ func _draw_pieces() -> void:
 		return
 	for piece in match.pieces:
 		_draw_piece(piece)
+
+
+## Draws the selected piece's ring and its legal destinations: a dot on empty
+## points, a ring around an enemy piece that can be captured.
+func _draw_highlights() -> void:
+	if match == null:
+		return
+	if selected != null:
+		_draw_ring(point_position(selected.column, selected.row), SELECT_COLOR)
+	for dest in _legal:
+		var center := point_position(dest.x, dest.y)
+		if match.piece_at(dest.x, dest.y) != null:
+			_draw_ring(center, CAPTURE_COLOR)
+		else:
+			draw_circle(center, 8.0, LEGAL_COLOR)
+
+
+func _draw_ring(center: Vector2, color: Color) -> void:
+	draw_arc(center, XIANGQI_PIECE_RADIUS + 4.0, 0.0, TAU, 48, color, HIGHLIGHT_WIDTH)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if match == null:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var point := _nearest_point(get_local_mouse_position())
+		if point == Vector2i.ZERO:
+			return
+		_handle_click(point)
+		queue_redraw()
+
+
+## The board point under a screen position, or Vector2i.ZERO when the position
+## is not near any point.
+func _nearest_point(local: Vector2) -> Vector2i:
+	var column := int(round((local.x - MARGIN) / POINT_SPACING)) + 1
+	var row := Board.ROWS - int(round((local.y - MARGIN) / POINT_SPACING))
+	if not Board.in_bounds(column, row):
+		return Vector2i.ZERO
+	if local.distance_to(point_position(column, row)) > POINT_SPACING * 0.45:
+		return Vector2i.ZERO
+	return Vector2i(column, row)
+
+
+## Selects a piece, applies a move onto a highlighted point, or clears the
+## selection. Only the side to move's pieces are selectable.
+func _handle_click(point: Vector2i) -> void:
+	var piece := match.piece_at(point.x, point.y)
+	if selected != null:
+		if _legal.has(point):
+			if self.match.move(selected, point.x, point.y):
+				selected = null
+				_legal = []
+				move_made.emit()
+			return
+		selected = null
+		_legal = []
+		if piece != null and piece.side == match.side_to_move:
+			selected = piece
+			_legal = match.legal_destinations(piece)
+		return
+	if piece != null and piece.side == match.side_to_move:
+		selected = piece
+		_legal = match.legal_destinations(piece)
 
 
 ## The shape comes from the owning side's army, so a Xiangqi piece captured and
