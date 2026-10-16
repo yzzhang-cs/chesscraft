@@ -176,6 +176,8 @@ func _nearest_point(local: Vector2) -> Vector2i:
 ## Selects a piece, applies a move onto a highlighted point, or clears the
 ## selection. Only the side to move's pieces are selectable.
 func _handle_click(point: Vector2i) -> void:
+	if match.winner != 0:
+		return
 	var piece := match.piece_at(point.x, point.y)
 	if selected != null:
 		if _legal.has(point):
@@ -193,6 +195,12 @@ func _handle_click(point: Vector2i) -> void:
 	if piece != null and piece.side == match.side_to_move:
 		selected = piece
 		_legal = match.legal_destinations(piece)
+
+
+## Clears any selection, so stale highlights do not survive undo or a move.
+func clear_selection() -> void:
+	selected = null
+	_legal = []
 
 
 ## The shape comes from the owning side's army, so a Xiangqi piece captured and
