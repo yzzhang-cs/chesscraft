@@ -25,6 +25,9 @@ easy to get wrong:
 | Run a headless script | `pwsh -NoProfile -File tools/godot.ps1 --headless --path . --script res://tests/smoke_test.gd` |
 | Run the game headless | `pwsh -NoProfile -File tools/godot.ps1 --headless --path . --quit-after 120` |
 
+The last row needs `run/main_scene` set in `project.godot`; without it Godot exits
+1 with `Can't run project: no main scene defined in the project.`
+
 ## Gate
 
 `tests/smoke_test.gd` is the environment check: it asserts `res://` reads and
