@@ -23,6 +23,8 @@ Three armies. Each side picks one independently; Side 1 always moves first.
 
 Shogi 飛車 sits on the owner's **right**, 角行 on the owner's **left**.
 
+**Why 大肥鱼的象棋 exists:** [this 小黑盒 post](https://www.xiaoheihe.cn/app/bbs/link/194097707).
+
 ## Piece glyphs
 
 Xiangqi (red / black):
