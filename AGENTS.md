@@ -63,3 +63,17 @@ relevant headless test exits 0.
 - Godot prints `Failed to read the root certificate store` on every sandboxed run.
   It comes from the sandbox denying a read of the Windows certificate store and is
   harmless unless the game makes HTTP requests.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as markdown files under `.scratch/<feature>/` in this repo. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles, each label equal to its role name: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root plus `docs/adr/`. See `docs/agents/domain.md`.
