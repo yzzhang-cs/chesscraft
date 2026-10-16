@@ -1,0 +1,17 @@
+# Godot 4+ engine cache / generated data
+.godot/
+/android/
+
+# Repo-local Godot data dirs, used by tools/godot.ps1 under the agent sandbox
+.godot-userdata/
+
+# Export configuration may embed signing credentials
+export_presets.cfg
+
+# OS cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local agent scratch
+dsh-*
