@@ -32,7 +32,7 @@ func _on_match_started(side1_army: Army.Type, side2_army: Army.Type) -> void:
 	add_child(_win_label)
 	_undo_button = Button.new()
 	_undo_button.text = "Undo"
-	_undo_button.position = Vector2(12.0, 656.0)
+	_undo_button.position = Vector2(12.0, 736.0)
 	_undo_button.pressed.connect(_on_undo_pressed)
 	add_child(_undo_button)
 	_refresh_status()

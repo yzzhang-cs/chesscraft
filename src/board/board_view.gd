@@ -41,6 +41,13 @@ const LEGAL_COLOR := Color(0.10, 0.55, 0.20)
 const CAPTURE_COLOR := Color(0.85, 0.15, 0.10)
 const HIGHLIGHT_WIDTH := 3.0
 
+## Hand tray: a row of held-piece tokens below the board, showing the side to
+## move's captured pieces awaiting a drop.
+const HAND_X := 64.0
+const HAND_Y := 700.0
+const HAND_SPACING := 48.0
+const HAND_RADIUS := 20.0
+
 
 ## Emitted after a move is applied, so the caller can refresh a turn indicator.
 signal move_made
@@ -53,6 +60,12 @@ var selected: Piece
 
 ## The selected piece's legal destinations, drawn as highlights.
 var _legal: Array[Vector2i] = []
+
+## The selected hand piece (awaiting a drop), or null.
+var selected_hand: Piece
+
+## The selected hand piece's legal drop destinations, drawn as highlights.
+var _drop_legal: Array[Vector2i] = []
 
 ## The move awaiting a promotion answer while the accept/decline dialog is open.
 var _pending_piece: Piece
@@ -76,6 +89,7 @@ func _draw() -> void:
 	_draw_palaces()
 	_draw_pieces()
 	_draw_highlights()
+	_draw_hand()
 
 
 func _draw_background() -> void:
@@ -150,18 +164,53 @@ func _draw_highlights() -> void:
 			draw_circle(center, 8.0, LEGAL_COLOR)
 
 
-func _draw_ring(center: Vector2, color: Color) -> void:
-	draw_arc(center, XIANGQI_PIECE_RADIUS + 4.0, 0.0, TAU, 48, color, HIGHLIGHT_WIDTH)
+## Draws the side to move's held pieces in the hand tray, each as a pentagon
+## glyph token; the selected hand piece is ringed.
+func _draw_hand() -> void:
+	if match == null:
+		return
+	var hand := match.hand_of(match.side_to_move)
+	for i in range(hand.size()):
+		var center := _hand_token_position(i)
+		_draw_pentagon(center, HAND_RADIUS, match.side_to_move == 1, SHOGI_PIECE_FILL, SHOGI_PIECE_BORDER)
+		_draw_shogi_glyph(center, hand[i].glyph(), SHOGI_GLYPH, 12)
+		if selected_hand == hand[i]:
+			_draw_ring(center, SELECT_COLOR, HAND_RADIUS)
+
+
+## Screen center of the `index`-th hand token, laid out left to right in one row.
+func _hand_token_position(index: int) -> Vector2:
+	return Vector2(HAND_X + float(index) * HAND_SPACING, HAND_Y)
+
+
+## The held piece whose token is under `local`, or null.
+func _hand_token_at(local: Vector2) -> Piece:
+	if match == null:
+		return null
+	var hand := match.hand_of(match.side_to_move)
+	for i in range(hand.size()):
+		if local.distance_to(_hand_token_position(i)) <= HAND_RADIUS + 4.0:
+			return hand[i]
+	return null
+
+
+func _draw_ring(center: Vector2, color: Color, radius: float = XIANGQI_PIECE_RADIUS) -> void:
+	draw_arc(center, radius + 4.0, 0.0, TAU, 48, color, HIGHLIGHT_WIDTH)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if match == null:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var point := _nearest_point(get_local_mouse_position())
-		if point == Vector2i.ZERO:
-			return
-		_handle_click(point)
+		var local := get_local_mouse_position()
+		var hand_piece := _hand_token_at(local)
+		if hand_piece != null:
+			_handle_hand_click(hand_piece)
+		else:
+			var point := _nearest_point(local)
+			if point == Vector2i.ZERO:
+				return
+			_handle_click(point)
 		queue_redraw()
 
 
@@ -177,11 +226,16 @@ func _nearest_point(local: Vector2) -> Vector2i:
 	return Vector2i(column, row)
 
 
-## Selects a piece, applies a move onto a highlighted point, or clears the
-## selection. Only the side to move's pieces are selectable.
+## Selects a piece, applies a move or drop onto a highlighted point, or clears
+## the selection. Only the side to move's pieces are selectable.
 func _handle_click(point: Vector2i) -> void:
 	if match.winner != 0:
 		return
+	if selected_hand != null:
+		if _drop_legal.has(point):
+			_apply_drop(selected_hand, point)
+			return
+		_clear_hand_selection()
 	var piece := match.piece_at(point.x, point.y)
 	if selected != null:
 		if _legal.has(point):
@@ -196,6 +250,26 @@ func _handle_click(point: Vector2i) -> void:
 	if piece != null and piece.side == match.side_to_move:
 		selected = piece
 		_legal = match.legal_destinations(piece)
+
+
+## Selects a hand piece (or deselects it when clicked again), highlighting its
+## legal drop destinations on the board.
+func _handle_hand_click(piece: Piece) -> void:
+	if match.winner != 0:
+		return
+	if selected_hand == piece:
+		_clear_hand_selection()
+		return
+	selected_hand = piece
+	selected = null
+	_legal = []
+	_drop_legal = match.legal_drop_destinations(piece)
+
+
+## Clears the selected hand piece and its drop highlights.
+func _clear_hand_selection() -> void:
+	selected_hand = null
+	_drop_legal = []
 
 
 ## Applies the move to `point`, promoting when the move is forced or the player
@@ -214,6 +288,16 @@ func _apply_move(piece: Piece, point: Vector2i, promote: bool) -> void:
 	if self.match.move(piece, point.x, point.y, promote):
 		selected = null
 		_legal = []
+		_clear_hand_selection()
+		move_made.emit()
+	queue_redraw()
+
+
+## Drops the selected hand piece onto `point`, clearing the selection and
+## emitting `move_made` on success.
+func _apply_drop(piece: Piece, point: Vector2i) -> void:
+	if self.match.drop(piece, point.x, point.y):
+		_clear_hand_selection()
 		move_made.emit()
 	queue_redraw()
 
@@ -256,6 +340,7 @@ func _finish_promotion(promote: bool) -> void:
 func clear_selection() -> void:
 	selected = null
 	_legal = []
+	_clear_hand_selection()
 
 
 ## The shape comes from the owning side's army, so a Xiangqi piece captured and
