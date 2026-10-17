@@ -6,8 +6,14 @@
 
 **Status:** ready-for-agent
 
-- [ ] The window is 840 pixels tall.
-- [ ] The board shifts down 60 pixels; grid, river, palaces, pieces, and highlights all follow and stay correct.
-- [ ] The "Side N to move" label is centered at the top.
-- [ ] The bottom hand tray and the Undo/Restart/New-match buttons remain below the board and clear of it.
-- [ ] All existing headless tests pass; touched scripts pass `--check-only`; the main scene boots headless.
+- [x] The window is 840 pixels tall.
+- [x] The board shifts down 60 pixels; grid, river, palaces, pieces, and highlights all follow and stay correct.
+- [x] The "Side N to move" label is centered at the top.
+- [x] The bottom hand tray and the Undo/Restart/New-match buttons remain below the board and clear of it.
+- [x] All existing headless tests pass; touched scripts pass `--check-only`; the main scene boots headless.
+
+## Comments
+
+Implemented in commit `fbbf685`. The window grew to 840 tall (`project.godot`); the board shifts down 60px via a new `TOP_MARGIN` (124) used by `point_position`; the turn label is centered at the top and the buttons moved to y=796 (`src/main.gd`).
+
+Verified: `--check-only` exits 0 on both touched scripts; the full headless suite passes (10/10); the main scene boots headless.
