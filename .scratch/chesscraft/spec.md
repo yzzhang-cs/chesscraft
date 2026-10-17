@@ -4,11 +4,11 @@ Status: ready-for-agent
 
 ## Problem Statement
 
-The user wants a playable local two-player board game, built with Godot 4.7, where each player can field either the Chinese Xiangqi or the Japanese Shogi army — plus a third army, 大肥鱼的象棋 — and where different armies can face each other on one shared board. Each army must move and capture by its original rules, Shogi's special rules (promotion, dropping captured pieces) must apply to the Shogi side only, and the game must remain simple and 2D while staying extensible toward online multiplayer later.
+The user wants a playable local two-player board game, built with Godot 4.7, where each player can field either the Chinese Xiangqi or the Japanese Shogi army — plus a third army, 大肥鱼的象棋 — and where different armies can face each other on one shared board. Each army must move and capture by its original rules, Shogi's special rules (promotion, dropping captured pieces) must apply to the Shogi side only, and the game must remain simple and 2D while staying extensible toward online multiplayer later. The player also wants to play solo: one human against a computer opponent, chosen per side in the same setup menu.
 
 ## Solution
 
-A Godot 4.7 2D game that splits cleanly into a **rules engine** (pure GDScript, no scene dependency) and a **presentation layer** (scenes/nodes). Two humans play hotseat on one screen: pick armies, then click a piece and a destination to move, with Shogi drops, promotion prompts, legal-move highlighting, a turn indicator, undo/restart, and a win banner. Three armies are supported (Xiangqi, Shogi, 大肥鱼的象棋), including cross-game matches where the two sides use different armies.
+A Godot 4.7 2D game that splits cleanly into a **rules engine** (pure GDScript, no scene dependency) and a **presentation layer** (scenes/nodes). Each side is controlled by a Player (human) or an AI (computer): pick armies and controllers, then click a piece and a destination to move, with Shogi drops, promotion prompts, legal-move highlighting, a turn indicator, undo/restart, and a win banner. The AI picks legal moves and Shogi drops greedily and replies after a short delay, so one human can play against the computer. Three armies are supported (Xiangqi, Shogi, 大肥鱼的象棋), including cross-game matches where the two sides use different armies.
 
 ## User Stories
 
@@ -50,6 +50,21 @@ A Godot 4.7 2D game that splits cleanly into a **rules engine** (pure GDScript, 
 36. As a player, I want checkmate to end the match in the checkmated side losing, so that wins resolve correctly.
 37. As a player, I want a side with no legal move (and not in check) to lose, so that the unified stalemate rule applies.
 38. As a developer, I want the rules engine decoupled from presentation, so that it can be tested headlessly and later reused for online multiplayer.
+39. As a player, I want to choose whether each side is a Player or an AI when selecting armies, so that I can play alone against the computer.
+40. As a player, I want the army-select menu to default both sides to Player, so that two-player hotseat stays the default and I opt into AI play.
+41. As a player, I want to set either side to AI, so that I can choose whether to move first or second against the computer.
+42. As a player, I want to set both sides to AI, so that I can watch an AI-vs-AI match.
+43. As a player, I want the AI to make only legal moves and drops, so that the match never enters an illegal state.
+44. As a player, I want the AI to prefer capturing higher-value pieces, so that it plays with at least a minimal sense of material rather than purely at random.
+45. As a player, I want the AI to prefer a move that gives check when captures are otherwise equal, so that it plays with a hint of purpose.
+46. As a player, I want the AI to promote a Shogi piece when promotion is optional, so that its Shogi play uses promotion.
+47. As a Shogi player facing an AI, I want the AI to drop pieces from its hand when useful, so that it plays Shogi's drop rule.
+48. As a player, I want the AI to reply after a short delay, so that I can see my own move land before the computer's reply.
+49. As a player, I want the AI never to move out of turn, so that turn order stays unambiguous.
+50. As a player, I want to be unable to move the AI's pieces, so that I cannot accidentally play for the computer.
+51. As a player, I want Undo against the AI to revert my last move together with the AI's reply, so that I can cleanly retake my move.
+52. As a player, I want Undo disabled when I have not yet moved since the start or restart, so that I cannot undo into a state where the AI re-moves immediately.
+53. As a developer, I want the AI to be a pure, headless-testable module and the human path to flow through a symmetric controller, so that future multiplayer and stronger AIs can reuse the same seam.
 
 ## Implementation Decisions
 
@@ -66,7 +81,13 @@ A Godot 4.7 2D game that splits cleanly into a **rules engine** (pure GDScript, 
 - **Architecture seam.** The rules engine is pure GDScript (board state, piece types, move generation, capture, drops, promotion, check/checkmate/win) with no Godot Node/scene dependency. The presentation layer (menu, board rendering, piece rendering, input, promotion prompt, turn banner, undo/restart) is thin and calls into the rules engine. The rules engine's public API is the single seam.
 - **Rendering.** Xiangqi = circle + Chinese character (red/black); Shogi = pentagon pointing at the opponent + Japanese character; a Xiangqi piece dropped by Shogi is drawn as a pentagon.
 - **Turn flow.** Side 1 moves first; turns alternate. Click a piece → highlight legal moves → click a destination; for Shogi drops, click a hand piece → click an empty point; a prompt appears for optional promotion.
-- **Menu.** A simple local-match setup: Side 1 and Side 2 each toggle Xiangqi / Shogi / 大肥鱼的象棋, then start.
+- **Menu.** A simple local-match setup: Side 1 and Side 2 each toggle Xiangqi / Shogi / 大肥鱼的象棋 and each toggle Player / AI, then start.
+- **Controller layer.** Each side is controlled by a Controller: a PlayerController (human) or an AIController (AI). Both are pure (RefCounted, no Node dependency), symmetric, and share a base Controller holding the side and the apply-move seam. The board view becomes render plus input-capture: it forwards the human's clicks to the side's PlayerController and ignores input while an AI side is to move.
+- **AI strength.** A greedy one-ply chooser: enumerate every legal move and drop, score each by the value of the piece captured (0 when none), prefer a move that gives check, and break ties randomly. Optional Shogi promotion is always taken. Search (minimax) is deliberately deferred; the scoring step is written so a stronger AI can replace it later.
+- **Material values.** A heuristic, tunable table used to score captures: Xiangqi 兵/卒 1, 仕/士 2, 相/象 2, 馬 4, 炮 4, 車 9; Shogi unpromoted 歩 1, 香 3, 桂 4, 銀 5, 金 6, 角 8, 飛 10; Shogi promoted と/成香/成桂/成銀 6, 龍馬 11, 龍王 13. Kings/generals are never captured and have no value.
+- **Turn scheduling.** The main scene holds the per-side controllers, built from the menu's choices. After a human move (or on start when Side 1 is an AI), the AI's move is scheduled after a short timer (~0.7 s); AI-vs-AI chains one AI after another until the match ends.
+- **Undo.** In a human-vs-AI match, Undo reverts the last human move plus any AI replies that followed it, and is disabled when the human has not moved since the last start or restart. Two-human matches keep single-ply undo.
+- **Determinism.** The AIController uses a seeded random-number generator so headless tests are reproducible.
 
 ## Testing Decisions
 
@@ -74,6 +95,7 @@ A Godot 4.7 2D game that splits cleanly into a **rules engine** (pure GDScript, 
 - **Test external behavior only.** Tests assert observable outcomes — which destinations are legal, whether a capture enters a hand or is removed, whether a drop is allowed, whether a promotion is forced, whether the match reports a winner — never internal representation details.
 - **Modules tested.** The rules engine only: openings for all three armies; every piece's movement (palace, river, eye, leg, cannon screen, soldier river-cross); capture-to-hand vs removed; drop legality; the dropped-兵 half-board restriction; the freed 相/士 rule; optional and mandatory promotion; check, checkmate, and no-legal-move losses.
 - **Prior art.** The repo already has `tests/smoke_test.gd`, a headless `SceneTree` script run with `godot_console --headless --path . --script res://tests/...`. Rules tests follow the same pattern, plus `--check-only` as a per-script parse gate.
+- **New module tested.** The AIController, headlessly, asserting only external behavior: every move or drop it chooses is legal, playing advances the turn, greedy scoring prefers the highest-value capture, and a Shogi AI both drops and promotes.
 
 ## Out of Scope
 
@@ -81,7 +103,7 @@ A Godot 4.7 2D game that splits cleanly into a **rules engine** (pure GDScript, 
 - The Xiangqi flying-general rule (moot: the general is never captured, so two generals never share the board).
 - A rules-toggle game mode for enabling/disabling specific Xiangqi/Shogi rules.
 - Online multiplayer (the rules/presentation split is designed to allow it later, but no networking now).
-- Single-player AI.
+- A stronger AI: minimax/search beyond the greedy one-ply heuristic is deferred (the scoring step is written so a stronger AI can replace it later).
 - Art assets beyond simple shapes and text glyphs.
 - Exporting a standalone binary (export templates are not installed).
 
@@ -90,3 +112,4 @@ A Godot 4.7 2D game that splits cleanly into a **rules engine** (pure GDScript, 
 - Cross-game matches are the headline feature; same-army matches are supported with no extra rules.
 - The rules engine should be data-driven about pieces, moves, and openings so that future rules toggles and the third army's distinct opening are cheap to express.
 - The decoupled rules engine is the extension point for the eventual online-multiplayer requirement.
+- The controller layer (PlayerController / AIController over the rules-engine seam) is that same extension point: a remote controller can later sit where the AIController sits.

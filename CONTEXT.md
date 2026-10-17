@@ -1,6 +1,6 @@
 # ChessCraft
 
-A local two-player game where each side plays with the Chinese Xiangqi, the Japanese Shogi, or 大肥鱼的象棋 piece set and rules, including the cross-game match where different armies face each other.
+A local two-sided game where each side plays with the Chinese Xiangqi, the Japanese Shogi, or 大肥鱼的象棋 piece set and rules, including the cross-game match where different armies face each other.
 
 ## Language
 
@@ -11,8 +11,14 @@ One complete game between two sides.
 _Avoid_: game, round, session
 
 **Side**:
-One of the two opposing forces in a match, each controlled by a human in local hotseat play. Side 1 always moves first.
-_Avoid_: player, color, team
+One of the two opposing forces in a match, each controlled by a Player or an AI. Side 1 always moves first.
+_Avoid_: player (a Side is the force; a Player is what controls it), color, team
+
+**Player**:
+The human controlling a side: the person at the screen who chooses that side's moves.
+
+**AI**:
+The computer controlling a side: it chooses that side's moves automatically.
 
 **Army**:
 The piece set and rule set a side uses: Xiangqi, Shogi, or 大肥鱼的象棋.
