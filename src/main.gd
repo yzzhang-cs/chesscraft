@@ -40,16 +40,18 @@ func _on_match_started(side1_army: Army.Type, side2_army: Army.Type) -> void:
 ## Creates the in-match status labels and controls. A new match tears these down
 ## first (see _teardown_match_controls), so they are built once per match.
 func _build_match_controls() -> void:
-	_turn_label = _make_label(Vector2(12.0, 8.0), 18)
+	_turn_label = _make_label(Vector2(0.0, 8.0), 18)
+	_turn_label.size = Vector2(640.0, 20.0)
+	_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_turn_label)
 	_win_label = _make_label(Vector2(0.0, 32.0), 26)
 	_win_label.size = Vector2(640.0, 36.0)
 	_win_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_win_label.add_theme_color_override("font_color", Color(0.55, 0.10, 0.10))
 	add_child(_win_label)
-	_undo_button = _make_button("Undo", Vector2(12.0, 736.0), _on_undo_pressed)
-	_restart_button = _make_button("Restart", Vector2(92.0, 736.0), _on_restart_pressed)
-	_new_match_button = _make_button("New match", Vector2(196.0, 736.0), _on_new_match_pressed)
+	_undo_button = _make_button("Undo", Vector2(12.0, 796.0), _on_undo_pressed)
+	_restart_button = _make_button("Restart", Vector2(92.0, 796.0), _on_restart_pressed)
+	_new_match_button = _make_button("New match", Vector2(196.0, 796.0), _on_new_match_pressed)
 
 
 func _make_label(pos: Vector2, font_size: int) -> Label:

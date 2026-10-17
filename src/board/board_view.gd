@@ -17,8 +17,12 @@ extends Node2D
 ## Distance, in pixels, between adjacent points.
 const POINT_SPACING := 64.0
 
-## Empty margin around the outermost points.
+## Empty margin around the outermost points (left and right edges).
 const MARGIN := 64.0
+
+## Top edge of the board, in pixels. Grown past MARGIN so Side 2's hand tray
+## fits above the board.
+const TOP_MARGIN := 124.0
 
 const BOARD_FILL := Color(0.93, 0.82, 0.62)
 const RIVER_FILL := Color(0.72, 0.82, 0.90, 0.55)
@@ -41,10 +45,12 @@ const LEGAL_COLOR := Color(0.10, 0.55, 0.20)
 const CAPTURE_COLOR := Color(0.85, 0.15, 0.10)
 const HIGHLIGHT_WIDTH := 3.0
 
-## Hand tray: a row of held-piece tokens below the board, showing the side to
-## move's captured pieces awaiting a drop.
+## Hand trays: one row of held-piece tokens per side. Side 1's tray sits below
+## the board, Side 2's above it; both always show their side's captured pieces
+## awaiting a drop, regardless of whose turn it is.
 const HAND_X := 64.0
-const HAND_Y := 700.0
+const HAND_Y_BOTTOM := 760.0
+const HAND_Y_TOP := 64.0
 const HAND_SPACING := 48.0
 const HAND_RADIUS := 20.0
 
@@ -82,7 +88,7 @@ var _font: Font
 func point_position(column: int, row: int) -> Vector2:
 	return Vector2(
 		MARGIN + float(column - 1) * POINT_SPACING,
-		MARGIN + float(Board.ROWS - row) * POINT_SPACING
+		TOP_MARGIN + float(Board.ROWS - row) * POINT_SPACING
 	)
 
 
@@ -168,34 +174,59 @@ func _draw_highlights() -> void:
 			draw_circle(center, 8.0, LEGAL_COLOR)
 
 
-## Draws the side to move's held pieces in the hand tray, each as a pentagon
-## glyph token; the selected hand piece is ringed.
+## Draws each side's held pieces in its own hand tray (Side 1 below the board,
+## Side 2 above it), each as a pentagon glyph token; the selected hand piece is
+## ringed. Both trays draw every frame, so a side's captures stay visible out of
+## turn.
 func _draw_hand() -> void:
 	if match == null:
 		return
-	var hand := match.hand_of(match.side_to_move)
+	_draw_hand_tray(1)
+	_draw_hand_tray(2)
+
+
+func _draw_hand_tray(side: int) -> void:
+	var hand := match.hand_of(side)
 	for i in range(hand.size()):
-		var center := _hand_token_position(i)
-		_draw_pentagon(center, HAND_RADIUS, match.side_to_move == 1, SHOGI_PIECE_FILL, SHOGI_PIECE_BORDER)
+		var center := _hand_token_position(side, i)
+		_draw_pentagon(center, HAND_RADIUS, side == 1, SHOGI_PIECE_FILL, SHOGI_PIECE_BORDER)
 		_draw_shogi_glyph(center, hand[i].glyph(), SHOGI_GLYPH, 12)
 		if selected_hand == hand[i]:
 			_draw_ring(center, SELECT_COLOR, HAND_RADIUS)
 
 
-## Screen center of the `index`-th hand token, laid out left to right in one row.
-func _hand_token_position(index: int) -> Vector2:
-	return Vector2(HAND_X + float(index) * HAND_SPACING, HAND_Y)
+## Screen center of the `index`-th token in `side`'s hand tray, laid out left to
+## right in one row. Side 1's row is below the board, Side 2's above it.
+func _hand_token_position(side: int, index: int) -> Vector2:
+	var y := HAND_Y_BOTTOM if side == 1 else HAND_Y_TOP
+	return Vector2(HAND_X + float(index) * HAND_SPACING, y)
 
 
-## The held piece whose token is under `local`, or null.
+## The side-to-move's held piece whose token is under `local`, or null. Only the
+## mover's own tray is selectable for a drop; the opponent's tray is display-only.
 func _hand_token_at(local: Vector2) -> Piece:
 	if match == null:
 		return null
-	var hand := match.hand_of(match.side_to_move)
+	return _tray_token_at(local, match.side_to_move)
+
+
+## The held piece in `side`'s tray whose token is under `local`, or null.
+func _tray_token_at(local: Vector2, side: int) -> Piece:
+	if match == null:
+		return null
+	var hand := match.hand_of(side)
 	for i in range(hand.size()):
-		if local.distance_to(_hand_token_position(i)) <= HAND_RADIUS + 4.0:
+		if local.distance_to(_hand_token_position(side, i)) <= HAND_RADIUS + 4.0:
 			return hand[i]
 	return null
+
+
+## True when `local` is over any hand token of either side. Used to swallow clicks
+## on the display-only opponent tray so they don't leak into a board click.
+func _over_any_hand_token(local: Vector2) -> bool:
+	if match == null:
+		return false
+	return _tray_token_at(local, 1) != null or _tray_token_at(local, 2) != null
 
 
 func _draw_ring(center: Vector2, color: Color, radius: float = XIANGQI_PIECE_RADIUS) -> void:
@@ -210,6 +241,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var hand_piece := _hand_token_at(local)
 		if hand_piece != null:
 			_handle_hand_click(hand_piece)
+		elif _over_any_hand_token(local):
+			return
 		else:
 			var point := _nearest_point(local)
 			if point == Vector2i.ZERO:
@@ -222,7 +255,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## is not near any point.
 func _nearest_point(local: Vector2) -> Vector2i:
 	var column := int(round((local.x - MARGIN) / POINT_SPACING)) + 1
-	var row := Board.ROWS - int(round((local.y - MARGIN) / POINT_SPACING))
+	var row := Board.ROWS - int(round((local.y - TOP_MARGIN) / POINT_SPACING))
 	if not Board.in_bounds(column, row):
 		return Vector2i.ZERO
 	if local.distance_to(point_position(column, row)) > POINT_SPACING * 0.45:
