@@ -6,8 +6,14 @@
 
 **Status:** ready-for-agent
 
-- [ ] Menu: each side toggles Player ⇄ AI beside its army toggle; defaults both Player.
-- [ ] The started signal carries both armies and both controllers.
-- [ ] Starting a match constructs a PlayerController or AIController per side and drives the AI side's moves.
-- [ ] The board view ignores clicks while an AI side is to move.
-- [ ] A human can play a complete match against the AI (any army, either side) through to the win banner.
+- [x] Menu: each side toggles Player ⇄ AI beside its army toggle; defaults both Player.
+- [x] The started signal carries both armies and both controllers.
+- [x] Starting a match constructs a PlayerController or AIController per side and drives the AI side's moves.
+- [x] The board view ignores clicks while an AI side is to move.
+- [x] A human can play a complete match against the AI (any army, either side) through to the win banner.
+
+## Comments
+
+Implemented `src/ui/menu_view.gd` (a Player ⇄ AI toggle per side, default Player; the `started` signal now carries both armies and both controller kinds) and `src/main.gd` (builds a PlayerController or AIController per side, drives the AI side's moves, and the board view ignores clicks while an AI side is to move). A human can start and play a full match against the AI.
+
+Verified: `--check-only` exits 0 on every touched script; the full headless suite passes; the main scene boots headless.

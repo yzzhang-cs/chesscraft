@@ -6,9 +6,15 @@
 
 **Status:** ready-for-agent
 
-- [ ] AIController extends the base Controller and is pure (no Node dependency).
-- [ ] It enumerates all legal moves and drops for its side and applies one through the rules engine.
-- [ ] Scoring prefers the highest-value capture, then check, with random tiebreaks.
-- [ ] Optional Shogi promotion is always taken; drops are considered.
-- [ ] A seeded random generator makes choices reproducible.
-- [ ] Headless tests assert: only legal moves, turn advance, higher-value capture preference, and Shogi drop/promote.
+- [x] AIController extends the base Controller and is pure (no Node dependency).
+- [x] It enumerates all legal moves and drops for its side and applies one through the rules engine.
+- [x] Scoring prefers the highest-value capture, then check, with random tiebreaks.
+- [x] Optional Shogi promotion is always taken; drops are considered.
+- [x] A seeded random generator makes choices reproducible.
+- [x] Headless tests assert: only legal moves, turn advance, higher-value capture preference, and Shogi drop/promote.
+
+## Comments
+
+Implemented `src/controller/ai_controller.gd`: a pure greedy one-ply AI that enumerates every legal move and Shogi drop, scores by captured-piece value (promoted values included), prefers check, breaks ties randomly, always takes optional promotion, and is seeded for reproducibility. The tunable material table lives in `AIController.value_of`.
+
+Verified: the new `ai_controller_test` asserts only-legal moves, turn advance, higher-value capture preference, check preference, drop, optional promotion, and seed reproducibility; all pass.

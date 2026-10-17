@@ -6,9 +6,10 @@ extends Node2D
 ## Japanese glyphs. Reads geometry from the pure `Board` model and state from
 ## the pure `Match` model.
 ##
-## Also handles click-to-move: clicking a piece selects it and highlights its
-## legal destinations; clicking a highlighted point applies the move through the
-## Match and emits `move_made`.
+## Also captures clicks and forwards them to the side-to-move's controller: a
+## PlayerController owns selection, move/drop, and the promotion decision, while
+## an AIController ignores clicks. The view only renders and captures input; it
+## never applies moves itself.
 ##
 ## Point (column, row) maps to screen space with column 1 on the left and
 ## row 1 at the bottom (Side 1's back rank).
@@ -55,33 +56,48 @@ const HAND_SPACING := 48.0
 const HAND_RADIUS := 20.0
 
 
-## Emitted after a move is applied, so the caller can refresh a turn indicator.
-signal move_made
-
 ## The match whose pieces to draw, or null to draw only the empty board.
 var match: Match
 
-## The currently selected piece, or null.
-var selected: Piece
+## The per-side controllers, keyed by side (1 or 2). Set by the main scene.
+var controllers: Dictionary = {}
 
-## The selected piece's legal destinations, drawn as highlights.
-var _legal: Array[Vector2i] = []
-
-## The selected hand piece (awaiting a drop), or null.
-var selected_hand: Piece
-
-## The selected hand piece's legal drop destinations, drawn as highlights.
-var _drop_legal: Array[Vector2i] = []
-
-## The move awaiting a promotion answer while the accept/decline dialog is open.
-var _pending_piece: Piece
-var _pending_point: Vector2i
+## The promotion-prompt callables bound to each PlayerController, kept so they
+## can be disconnected when the controllers are replaced.
+var _promotion_callables: Dictionary = {}
 
 ## The accept/decline dialog for an optional promotion, open while the player
 ## decides. Tracked so it can be closed when the match is reset or replaced.
 var _promotion_dialog: ConfirmationDialog
 
+## The controller awaiting a promotion answer while the dialog is open.
+var _promotion_controller: PlayerController
+
 var _font: Font
+
+
+## Sets the per-side controllers, wiring the promotion prompt for any human side.
+func set_controllers(controllers: Dictionary) -> void:
+	for side in _promotion_callables:
+		if self.controllers.has(side):
+			var old: Controller = self.controllers[side]
+			if old is PlayerController:
+				old.promotion_requested.disconnect(_promotion_callables[side])
+	_promotion_callables.clear()
+	self.controllers = controllers
+	for side in controllers:
+		var controller: Controller = controllers[side]
+		if controller is PlayerController:
+			var callable: Callable = _on_promotion_requested.bind(controller)
+			_promotion_callables[side] = callable
+			controller.promotion_requested.connect(callable)
+
+
+## The side-to-move's controller when it is a human, or null while an AI side is
+## to move (clicks are ignored then).
+func _current_player_controller() -> PlayerController:
+	var controller: Controller = controllers.get(match.side_to_move)
+	return controller if controller is PlayerController else null
 
 
 ## Screen position of a board point.
@@ -159,14 +175,18 @@ func _draw_pieces() -> void:
 		_draw_piece(piece)
 
 
-## Draws the selected piece's ring and its legal destinations: a dot on empty
-## points, a ring around an enemy piece that can be captured.
+## Draws the human side-to-move's selected piece's ring and its legal
+## destinations: a dot on empty points, a ring around an enemy piece that can be
+## captured. Reads the selection from the controller.
 func _draw_highlights() -> void:
 	if match == null:
 		return
-	if selected != null:
-		_draw_ring(point_position(selected.column, selected.row), SELECT_COLOR)
-	for dest in _legal:
+	var controller := _current_player_controller()
+	if controller == null:
+		return
+	if controller.selected != null:
+		_draw_ring(point_position(controller.selected.column, controller.selected.row), SELECT_COLOR)
+	for dest in controller.legal:
 		var center := point_position(dest.x, dest.y)
 		if match.piece_at(dest.x, dest.y) != null:
 			_draw_ring(center, CAPTURE_COLOR)
@@ -187,11 +207,12 @@ func _draw_hand() -> void:
 
 func _draw_hand_tray(side: int) -> void:
 	var hand := match.hand_of(side)
+	var controller := _current_player_controller()
 	for i in range(hand.size()):
 		var center := _hand_token_position(side, i)
 		_draw_pentagon(center, HAND_RADIUS, side == 1, SHOGI_PIECE_FILL, SHOGI_PIECE_BORDER)
 		_draw_shogi_glyph(center, hand[i].glyph(), SHOGI_GLYPH, 12)
-		if selected_hand == hand[i]:
+		if controller != null and controller.selected_hand == hand[i]:
 			_draw_ring(center, SELECT_COLOR, HAND_RADIUS)
 
 
@@ -233,21 +254,26 @@ func _draw_ring(center: Vector2, color: Color, radius: float = XIANGQI_PIECE_RAD
 	draw_arc(center, radius + 4.0, 0.0, TAU, 48, color, HIGHLIGHT_WIDTH)
 
 
+## Captures a click and forwards it to the side-to-move's human controller.
+## While an AI side is to move, clicks are ignored.
 func _unhandled_input(event: InputEvent) -> void:
 	if match == null:
+		return
+	var controller := _current_player_controller()
+	if controller == null:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var local := get_local_mouse_position()
 		var hand_piece := _hand_token_at(local)
 		if hand_piece != null:
-			_handle_hand_click(hand_piece)
+			controller.handle_hand(hand_piece)
 		elif _over_any_hand_token(local):
 			return
 		else:
 			var point := _nearest_point(local)
 			if point == Vector2i.ZERO:
 				return
-			_handle_click(point)
+			controller.handle_point(point)
 		queue_redraw()
 
 
@@ -263,86 +289,10 @@ func _nearest_point(local: Vector2) -> Vector2i:
 	return Vector2i(column, row)
 
 
-## Selects a piece, applies a move or drop onto a highlighted point, or clears
-## the selection. Only the side to move's pieces are selectable.
-func _handle_click(point: Vector2i) -> void:
-	if match.winner != 0:
-		return
-	if selected_hand != null:
-		if _drop_legal.has(point):
-			_apply_drop(selected_hand, point)
-			return
-		_clear_hand_selection()
-	var piece := match.piece_at(point.x, point.y)
-	if selected != null:
-		if _legal.has(point):
-			_try_move(selected, point)
-			return
-		selected = null
-		_legal = []
-		if piece != null and piece.side == match.side_to_move:
-			selected = piece
-			_legal = match.legal_destinations(piece)
-		return
-	if piece != null and piece.side == match.side_to_move:
-		selected = piece
-		_legal = match.legal_destinations(piece)
-
-
-## Selects a hand piece (or deselects it when clicked again), highlighting its
-## legal drop destinations on the board.
-func _handle_hand_click(piece: Piece) -> void:
-	if match.winner != 0:
-		return
-	if selected_hand == piece:
-		_clear_hand_selection()
-		return
-	selected_hand = piece
-	selected = null
-	_legal = []
-	_drop_legal = match.legal_drop_destinations(piece)
-
-
-## Clears the selected hand piece and its drop highlights.
-func _clear_hand_selection() -> void:
-	selected_hand = null
-	_drop_legal = []
-
-
-## Applies the move to `point`, promoting when the move is forced or the player
-## accepted the optional promotion prompt.
-func _try_move(piece: Piece, point: Vector2i) -> void:
-	if match.must_promote(piece, point.y):
-		_apply_move(piece, point, true)
-	elif match.can_promote(piece, point.y):
-		_ask_promotion(piece, point)
-	else:
-		_apply_move(piece, point, false)
-
-
-## Performs the move and clears the selection, emitting `move_made` on success.
-func _apply_move(piece: Piece, point: Vector2i, promote: bool) -> void:
-	if self.match.move(piece, point.x, point.y, promote):
-		selected = null
-		_legal = []
-		_clear_hand_selection()
-		move_made.emit()
-	queue_redraw()
-
-
-## Drops the selected hand piece onto `point`, clearing the selection and
-## emitting `move_made` on success.
-func _apply_drop(piece: Piece, point: Vector2i) -> void:
-	if self.match.drop(piece, point.x, point.y):
-		_clear_hand_selection()
-		move_made.emit()
-	queue_redraw()
-
-
-## Pops an accept/decline dialog for an optional promotion.
-func _ask_promotion(piece: Piece, point: Vector2i) -> void:
-	_pending_piece = piece
-	_pending_point = point
+## Shows the accept/decline dialog for an optional promotion, on behalf of the
+## controller that requested it.
+func _on_promotion_requested(piece: Piece, point: Vector2i, controller: PlayerController) -> void:
+	_promotion_controller = controller
 	_promotion_dialog = ConfirmationDialog.new()
 	_promotion_dialog.title = "Promote?"
 	_promotion_dialog.dialog_text = "Promote %s to %s?" % [piece.glyph(), Piece.promoted_glyph(piece.kind)]
@@ -363,22 +313,19 @@ func _on_promotion_declined() -> void:
 
 
 func _finish_promotion(promote: bool) -> void:
-	if _pending_piece == null:
+	if _promotion_controller == null:
 		return
-	var piece := _pending_piece
-	var point := _pending_point
-	_pending_piece = null
-	_pending_point = Vector2i.ZERO
+	var controller := _promotion_controller
+	_promotion_controller = null
 	_close_promotion_dialog()
-	_apply_move(piece, point, promote)
+	controller.answer_promotion(promote)
 
 
-## Cancels a pending promotion without applying the move, closing its prompt.
-## Called when the match is reset or replaced so a stale answer cannot apply to
-## the new position.
+## Cancels any pending promotion prompt without applying the move, closing its
+## dialog. Called when the match is reset or replaced so a stale answer cannot
+## apply to the new position.
 func cancel_promotion() -> void:
-	_pending_piece = null
-	_pending_point = Vector2i.ZERO
+	_promotion_controller = null
 	_close_promotion_dialog()
 
 
@@ -387,15 +334,6 @@ func _close_promotion_dialog() -> void:
 	if _promotion_dialog != null:
 		_promotion_dialog.queue_free()
 		_promotion_dialog = null
-
-
-## Clears any selection and pending promotion, so stale highlights and prompts
-## do not survive undo, a move, a restart, or a new match.
-func clear_selection() -> void:
-	selected = null
-	_legal = []
-	_clear_hand_selection()
-	cancel_promotion()
 
 
 ## The shape comes from the owning side's army, so a Xiangqi piece captured and

@@ -6,7 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] The AI moves after a short (~0.7 s) delay.
-- [ ] AI-vs-AI chains moves until the match ends.
-- [ ] Human-vs-AI Undo reverts the last human move plus the AI's reply; disabled before the human's first move since start/restart.
-- [ ] Two-human Undo stays single-ply.
+- [x] The AI moves after a short (~0.7 s) delay.
+- [x] AI-vs-AI chains moves until the match ends.
+- [x] Human-vs-AI Undo reverts the last human move plus the AI's reply; disabled before the human's first move since start/restart.
+- [x] Two-human Undo stays single-ply.
+
+## Comments
+
+Implemented AI pacing and two-ply undo in `src/main.gd`: the AI replies after a ~0.7 s timer, AI-vs-AI chains one AI after another, human-vs-AI Undo reverts the last human move plus the AI's reply (disabled until the human has moved), and two-human Undo stays single-ply.
+
+Verified: `--check-only` exits 0 on every touched script; the full headless suite passes; the main scene boots headless.
