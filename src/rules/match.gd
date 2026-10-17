@@ -7,7 +7,9 @@ extends RefCounted
 ##
 ## Side 1 always moves first; its back rank is row 1. Side 2's back rank is
 ## row 10. A king (Xiangqi general or Shogi king) is never captured: threatening
-## it is check, and checkmate ends the match.
+## it is check, and checkmate ends the match. Shogi promotion is optional when a
+## move begins or ends in the promotion zone, and forced for a stranded piece;
+## `move()` applies it and `undo()` reverts it.
 
 
 ## End reasons: the match ended by checkmate or by a side with no legal move.
@@ -115,11 +117,35 @@ func legal_destinations(piece: Piece) -> Array[Vector2i]:
 	return result
 
 
+## True when a move of `piece` to `row` may promote: the piece is an unpromoted
+## promotable Shogi kind and the move begins or ends in the promotion zone (the
+## enemy's three back ranks). Xiangqi pieces never promote.
+func can_promote(piece: Piece, row: int) -> bool:
+	if piece == null or piece.promoted or not Piece.is_promotable(piece.kind):
+		return false
+	return Board.is_in_promotion_zone(piece.side, piece.row) or Board.is_in_promotion_zone(piece.side, row)
+
+
+## True when a move of `piece` to `row` forces promotion: a pawn or lance
+## landing on the enemy's back rank, or a knight landing on the enemy's last
+## two ranks (where it would have no forward move left).
+func must_promote(piece: Piece, row: int) -> bool:
+	if piece == null or piece.promoted or not Piece.is_promotable(piece.kind):
+		return false
+	match piece.kind:
+		Piece.Kind.SHOGI_PAWN, Piece.Kind.SHOGI_LANCE:
+			return row == Board.enemy_back_rank(piece.side)
+		Piece.Kind.SHOGI_KNIGHT:
+			return Board.is_enemy_last_two_ranks(piece.side, row)
+	return false
+
+
 ## Moves `piece` to (column, row) when it is the side to move, the match is
 ## ongoing, and the point is one of its legal destinations. A capture removes
-## the enemy piece. Records the move for undo and returns true when applied
-## (and the turn passed to the other side).
-func move(piece: Piece, column: int, row: int) -> bool:
+## the enemy piece. A Shogi promotion applies when `promote` is true or the
+## move is a forced promotion. Records the move (and any promotion) for undo
+## and returns true when applied (and the turn passed to the other side).
+func move(piece: Piece, column: int, row: int, promote: bool = false) -> bool:
 	if piece == null or piece.side != side_to_move:
 		return false
 	if winner != 0:
@@ -127,14 +153,24 @@ func move(piece: Piece, column: int, row: int) -> bool:
 	if not legal_destinations(piece).has(Vector2i(column, row)):
 		return false
 	var from := Vector2i(piece.column, piece.row)
+	var was_promoted := piece.promoted
+	var should_promote := (promote or must_promote(piece, row)) and can_promote(piece, row)
 	var captured := _apply(piece, column, row)
-	_history.append({"piece": piece, "from": from, "captured": captured})
+	if should_promote:
+		piece.promoted = true
+	_history.append({
+		"piece": piece,
+		"from": from,
+		"captured": captured,
+		"was_promoted": was_promoted,
+	})
 	side_to_move = other_side(side_to_move)
 	return true
 
 
-## Reverts the last move and restores any captured piece, returning the turn to
-## the side that made it. Returns true when there was a move to undo.
+## Reverts the last move, restores any captured piece, and undoes any promotion
+## that move applied, returning the turn to the side that made it. Returns true
+## when there was a move to undo.
 func undo() -> bool:
 	if _history.is_empty():
 		return false
@@ -143,6 +179,7 @@ func undo() -> bool:
 	var from: Vector2i = record["from"]
 	var captured: Piece = record["captured"]
 	_revert(piece, from, captured)
+	piece.promoted = record["was_promoted"]
 	side_to_move = other_side(side_to_move)
 	return true
 

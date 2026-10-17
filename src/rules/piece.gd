@@ -43,6 +43,11 @@ var kind: Kind
 var column: int
 var row: int
 
+## True when the piece is promoted (Shogi promotion). Only the Shogi rook,
+## bishop, silver, knight, lance, and pawn promote; every other piece stays
+## false.
+var promoted: bool = false
+
 
 func _init(side: int, army: Army.Type, kind: Kind, column: int, row: int) -> void:
 	self.side = side
@@ -54,8 +59,12 @@ func _init(side: int, army: Army.Type, kind: Kind, column: int, row: int) -> voi
 
 ## The glyph drawn on the piece. Xiangqi glyphs are red for Side 1 (the first
 ## mover) and black for Side 2; Shogi glyphs are two-character Japanese names
-## that do not vary with side.
+## that do not vary with side. A promoted Shogi piece shows its promoted glyph.
 func glyph() -> String:
+	if promoted:
+		var promoted_glyph := Piece.promoted_glyph(kind)
+		if promoted_glyph != "":
+			return promoted_glyph
 	match kind:
 		Kind.XIANGQI_GENERAL:
 			return "帥" if side == 1 else "將"
@@ -88,3 +97,35 @@ func glyph() -> String:
 		Kind.SHOGI_PAWN:
 			return "歩兵"
 	return ""
+
+
+## The glyph a Shogi piece of `kind` shows once promoted, or "" when `kind`
+## cannot promote (the king, the gold, and every Xiangqi kind).
+static func promoted_glyph(kind: Kind) -> String:
+	match kind:
+		Kind.SHOGI_ROOK:
+			return "龍王"
+		Kind.SHOGI_BISHOP:
+			return "龍馬"
+		Kind.SHOGI_SILVER:
+			return "成銀"
+		Kind.SHOGI_KNIGHT:
+			return "成桂"
+		Kind.SHOGI_LANCE:
+			return "成香"
+		Kind.SHOGI_PAWN:
+			return "と"
+	return ""
+
+
+## True when `kind` is a Shogi kind that may promote (rook, bishop, silver,
+## knight, lance, or pawn). Derived from `promoted_glyph`, which is empty
+## exactly for the non-promoting kinds.
+static func is_promotable(kind: Kind) -> bool:
+	return promoted_glyph(kind) != ""
+
+
+## Clears promotion. A captured promoted Shogi piece reverts to its unpromoted
+## form before entering the captor's hand (issue 07 wires this into capture).
+func unpromote() -> void:
+	promoted = false

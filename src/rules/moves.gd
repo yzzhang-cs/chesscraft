@@ -1,9 +1,9 @@
 class_name Moves
 extends RefCounted
-## Pure Xiangqi movement rules: computes the destinations a piece may move to,
-## honoring occupancy, palaces, the river, and the elephant eye / horse leg /
-## cannon screen blocks. Shogi movement arrives in a later issue, so Shogi kinds
-## currently report no destinations.
+## Pure movement rules: computes the destinations a piece may move to, honoring
+## occupancy, palaces, the river, and the elephant eye / horse leg / cannon
+## screen blocks (Xiangqi), plus the step/slide/jump patterns of Shogi
+## including their promoted forms.
 ##
 ## Move generation is turn-agnostic: it answers "where can this piece go" from
 ## its position and kind, leaving whose turn it is to the Match.
@@ -33,6 +33,22 @@ static func destinations(board: Match, piece: Piece) -> Array[Vector2i]:
 			return _cannon(board, piece)
 		Piece.Kind.XIANGQI_SOLDIER:
 			return _soldier(board, piece)
+		Piece.Kind.SHOGI_KING:
+			return _king(board, piece)
+		Piece.Kind.SHOGI_ROOK:
+			return _rook(board, piece)
+		Piece.Kind.SHOGI_BISHOP:
+			return _bishop(board, piece)
+		Piece.Kind.SHOGI_GOLD:
+			return _gold(board, piece)
+		Piece.Kind.SHOGI_SILVER:
+			return _silver(board, piece)
+		Piece.Kind.SHOGI_KNIGHT:
+			return _knight(board, piece)
+		Piece.Kind.SHOGI_LANCE:
+			return _lance(board, piece)
+		Piece.Kind.SHOGI_PAWN:
+			return _pawn(board, piece)
 	return []
 
 
@@ -161,11 +177,114 @@ static func _cannon(board: Match, piece: Piece) -> Array[Vector2i]:
 ## never backward.
 static func _soldier(board: Match, piece: Piece) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
-	var forward := 1 if piece.side == 1 else -1
+	var forward := _forward(piece.side)
 	if _can_land(board, piece, piece.column, piece.row + forward):
 		result.append(Vector2i(piece.column, piece.row + forward))
 	if Board.has_crossed_river(piece.side, piece.row):
 		for column in [piece.column - 1, piece.column + 1]:
 			if _can_land(board, piece, column, piece.row):
 				result.append(Vector2i(column, piece.row))
+	return result
+
+
+## Shogi king: one step in any of the 8 directions.
+static func _king(board: Match, piece: Piece) -> Array[Vector2i]:
+	return _steps(board, piece, _ORTHOGONAL + _DIAGONAL)
+
+
+## Shogi rook: slides any orthogonal distance; promoted (龍王) also steps one
+## point along each diagonal.
+static func _rook(board: Match, piece: Piece) -> Array[Vector2i]:
+	var result := _slide(board, piece, _ORTHOGONAL)
+	if piece.promoted:
+		result.append_array(_steps(board, piece, _DIAGONAL))
+	return result
+
+
+## Shogi bishop: slides any diagonal distance; promoted (龍馬) also steps one
+## point along each orthogonal.
+static func _bishop(board: Match, piece: Piece) -> Array[Vector2i]:
+	var result := _slide(board, piece, _DIAGONAL)
+	if piece.promoted:
+		result.append_array(_steps(board, piece, _ORTHOGONAL))
+	return result
+
+
+## Shogi gold: one step forward/back/left/right plus the two forward-diagonals.
+## The promoted forms of silver, knight, lance, and pawn move as a gold.
+static func _gold(board: Match, piece: Piece) -> Array[Vector2i]:
+	return _steps(board, piece, _gold_directions(piece.side))
+
+
+## The six gold steps: forward, back, left, right, and the two forward-diagonals.
+static func _gold_directions(side: int) -> Array[Vector2i]:
+	var forward := _forward(side)
+	return [
+		Vector2i(0, forward), Vector2i(0, -forward),
+		Vector2i(1, 0), Vector2i(-1, 0),
+		Vector2i(1, forward), Vector2i(-1, forward),
+	]
+
+
+## Shogi silver: one step forward plus the four diagonals; promoted (成銀)
+## moves as a gold.
+static func _silver(board: Match, piece: Piece) -> Array[Vector2i]:
+	if piece.promoted:
+		return _gold(board, piece)
+	return _steps(board, piece, _silver_directions(piece.side))
+
+
+## The five silver steps: one forward plus the four diagonals.
+static func _silver_directions(side: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = [Vector2i(0, _forward(side))]
+	result.append_array(_DIAGONAL)
+	return result
+
+
+## Shogi knight: jumps two forward and one sideways (no leg block); promoted
+## (成桂) moves as a gold.
+static func _knight(board: Match, piece: Piece) -> Array[Vector2i]:
+	if piece.promoted:
+		return _gold(board, piece)
+	var result: Array[Vector2i] = []
+	var row := piece.row + 2 * _forward(piece.side)
+	for column in [piece.column - 1, piece.column + 1]:
+		if _can_land(board, piece, column, row):
+			result.append(Vector2i(column, row))
+	return result
+
+
+## Shogi lance: slides any forward distance; promoted (成香) moves as a gold.
+static func _lance(board: Match, piece: Piece) -> Array[Vector2i]:
+	if piece.promoted:
+		return _gold(board, piece)
+	var forward: Array[Vector2i] = [Vector2i(0, _forward(piece.side))]
+	return _slide(board, piece, forward)
+
+
+## Shogi pawn: one step forward; promoted (と) moves as a gold.
+static func _pawn(board: Match, piece: Piece) -> Array[Vector2i]:
+	if piece.promoted:
+		return _gold(board, piece)
+	var result: Array[Vector2i] = []
+	var row := piece.row + _forward(piece.side)
+	if _can_land(board, piece, piece.column, row):
+		result.append(Vector2i(piece.column, row))
+	return result
+
+
+## Forward is toward the opponent: +1 row for Side 1 (which advances to higher
+## rows), -1 for Side 2.
+static func _forward(side: int) -> int:
+	return 1 if side == 1 else -1
+
+
+## One step along each of `directions`, honoring occupancy.
+static func _steps(board: Match, piece: Piece, directions: Array[Vector2i]) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for dir in directions:
+		var column := piece.column + dir.x
+		var row := piece.row + dir.y
+		if _can_land(board, piece, column, row):
+			result.append(Vector2i(column, row))
 	return result

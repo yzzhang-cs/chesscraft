@@ -69,3 +69,27 @@ static func has_crossed_river(side: int, row: int) -> bool:
 	if side == 1:
 		return row >= RIVER_ROW_ABOVE
 	return row <= RIVER_ROW_BELOW
+
+
+## True when `row` lies in the promotion zone for a Shogi piece of `side`: the
+## enemy's three back ranks. These rows coincide with the enemy palace's rows
+## (Side 2's rows 8..10 for Side 1, Side 1's rows 1..3 for Side 2).
+static func is_in_promotion_zone(side: int, row: int) -> bool:
+	if side == 1:
+		return row >= PALACE_SIDE2_ROW_MIN and row <= PALACE_SIDE2_ROW_MAX
+	return row >= PALACE_SIDE1_ROW_MIN and row <= PALACE_SIDE1_ROW_MAX
+
+
+## The enemy's back rank for `side`: the deepest row of the promotion zone,
+## where a Shogi pawn or lance landing must promote (it has no forward move
+## left).
+static func enemy_back_rank(side: int) -> int:
+	return ROWS if side == 1 else 1
+
+
+## True when `row` is on the enemy's last two ranks for `side`, where a Shogi
+## knight landing must promote (its 2-forward jump would leave the board).
+static func is_enemy_last_two_ranks(side: int, row: int) -> bool:
+	if side == 1:
+		return row >= ROWS - 1
+	return row <= 2

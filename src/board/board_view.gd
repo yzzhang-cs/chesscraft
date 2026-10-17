@@ -54,6 +54,10 @@ var selected: Piece
 ## The selected piece's legal destinations, drawn as highlights.
 var _legal: Array[Vector2i] = []
 
+## The move awaiting a promotion answer while the accept/decline dialog is open.
+var _pending_piece: Piece
+var _pending_point: Vector2i
+
 var _font: Font
 
 
@@ -181,10 +185,7 @@ func _handle_click(point: Vector2i) -> void:
 	var piece := match.piece_at(point.x, point.y)
 	if selected != null:
 		if _legal.has(point):
-			if self.match.move(selected, point.x, point.y):
-				selected = null
-				_legal = []
-				move_made.emit()
+			_try_move(selected, point)
 			return
 		selected = null
 		_legal = []
@@ -195,6 +196,60 @@ func _handle_click(point: Vector2i) -> void:
 	if piece != null and piece.side == match.side_to_move:
 		selected = piece
 		_legal = match.legal_destinations(piece)
+
+
+## Applies the move to `point`, promoting when the move is forced or the player
+## accepted the optional promotion prompt.
+func _try_move(piece: Piece, point: Vector2i) -> void:
+	if match.must_promote(piece, point.y):
+		_apply_move(piece, point, true)
+	elif match.can_promote(piece, point.y):
+		_ask_promotion(piece, point)
+	else:
+		_apply_move(piece, point, false)
+
+
+## Performs the move and clears the selection, emitting `move_made` on success.
+func _apply_move(piece: Piece, point: Vector2i, promote: bool) -> void:
+	if self.match.move(piece, point.x, point.y, promote):
+		selected = null
+		_legal = []
+		move_made.emit()
+	queue_redraw()
+
+
+## Pops an accept/decline dialog for an optional promotion.
+func _ask_promotion(piece: Piece, point: Vector2i) -> void:
+	_pending_piece = piece
+	_pending_point = point
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Promote?"
+	dialog.dialog_text = "Promote %s to %s?" % [piece.glyph(), Piece.promoted_glyph(piece.kind)]
+	dialog.ok_button_text = "Promote"
+	dialog.cancel_button_text = "Decline"
+	dialog.confirmed.connect(_on_promotion_confirmed.bind(dialog))
+	dialog.canceled.connect(_on_promotion_declined.bind(dialog))
+	add_child(dialog)
+	dialog.popup_centered()
+
+
+func _on_promotion_confirmed(dialog: ConfirmationDialog) -> void:
+	dialog.queue_free()
+	_finish_promotion(true)
+
+
+func _on_promotion_declined(dialog: ConfirmationDialog) -> void:
+	dialog.queue_free()
+	_finish_promotion(false)
+
+
+func _finish_promotion(promote: bool) -> void:
+	if _pending_piece == null:
+		return
+	var piece := _pending_piece
+	var point := _pending_point
+	_pending_piece = null
+	_apply_move(piece, point, promote)
 
 
 ## Clears any selection, so stale highlights do not survive undo or a move.
@@ -245,8 +300,12 @@ func _draw_pentagon(center: Vector2, radius: float, points_up: bool, fill: Color
 	draw_polyline(outline, border, LINE_WIDTH)
 
 
-## Shogi glyphs are two characters stacked vertically, as on a real piece.
+## Shogi glyphs are two characters stacked vertically, as on a real piece; a
+## single-character glyph (the promoted pawn と) is centered instead.
 func _draw_shogi_glyph(center: Vector2, glyph: String, color: Color, font_size: int) -> void:
+	if glyph.length() == 1:
+		_draw_glyph(center, glyph, color, font_size)
+		return
 	var gap := float(font_size) * 0.62
 	_draw_glyph(center + Vector2(0.0, -gap / 2.0), glyph.substr(0, 1), color, font_size)
 	_draw_glyph(center + Vector2(0.0, gap / 2.0), glyph.substr(1, 1), color, font_size)
