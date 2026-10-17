@@ -65,6 +65,19 @@ var end_reason: String:
 func _init(side1_army: Army.Type, side2_army: Army.Type) -> void:
 	self.side1_army = side1_army
 	self.side2_army = side2_army
+	_place_opening()
+
+
+## Resets the match to its opening position for the same two armies: clears the
+## board, the hands, and the undo history, re-places every opening piece, and
+## returns the turn to Side 1. The winner/end state clears with the position.
+func restart() -> void:
+	clear()
+	_place_opening()
+
+
+## Places each side's opening pieces in absolute board coordinates.
+func _place_opening() -> void:
 	for placement in Openings.for_army(side1_army, 1):
 		place(Piece.new(1, side1_army, placement["kind"], placement["column"], placement["row"]))
 	for placement in Openings.for_army(side2_army, 2):
@@ -92,8 +105,8 @@ func piece_at(column: int, row: int) -> Piece:
 
 
 ## Removes every piece, resetting the board, the hands, the turn (Side 1), and
-## the undo history. Used to build test positions and (later) to restart a
-## match.
+## the undo history. Used to build test positions; `restart()` re-places the
+## opening afterwards.
 func clear() -> void:
 	pieces.clear()
 	_pieces_by_point.clear()

@@ -71,6 +71,10 @@ var _drop_legal: Array[Vector2i] = []
 var _pending_piece: Piece
 var _pending_point: Vector2i
 
+## The accept/decline dialog for an optional promotion, open while the player
+## decides. Tracked so it can be closed when the match is reset or replaced.
+var _promotion_dialog: ConfirmationDialog
+
 var _font: Font
 
 
@@ -306,24 +310,22 @@ func _apply_drop(piece: Piece, point: Vector2i) -> void:
 func _ask_promotion(piece: Piece, point: Vector2i) -> void:
 	_pending_piece = piece
 	_pending_point = point
-	var dialog := ConfirmationDialog.new()
-	dialog.title = "Promote?"
-	dialog.dialog_text = "Promote %s to %s?" % [piece.glyph(), Piece.promoted_glyph(piece.kind)]
-	dialog.ok_button_text = "Promote"
-	dialog.cancel_button_text = "Decline"
-	dialog.confirmed.connect(_on_promotion_confirmed.bind(dialog))
-	dialog.canceled.connect(_on_promotion_declined.bind(dialog))
-	add_child(dialog)
-	dialog.popup_centered()
+	_promotion_dialog = ConfirmationDialog.new()
+	_promotion_dialog.title = "Promote?"
+	_promotion_dialog.dialog_text = "Promote %s to %s?" % [piece.glyph(), Piece.promoted_glyph(piece.kind)]
+	_promotion_dialog.ok_button_text = "Promote"
+	_promotion_dialog.cancel_button_text = "Decline"
+	_promotion_dialog.confirmed.connect(_on_promotion_confirmed)
+	_promotion_dialog.canceled.connect(_on_promotion_declined)
+	add_child(_promotion_dialog)
+	_promotion_dialog.popup_centered()
 
 
-func _on_promotion_confirmed(dialog: ConfirmationDialog) -> void:
-	dialog.queue_free()
+func _on_promotion_confirmed() -> void:
 	_finish_promotion(true)
 
 
-func _on_promotion_declined(dialog: ConfirmationDialog) -> void:
-	dialog.queue_free()
+func _on_promotion_declined() -> void:
 	_finish_promotion(false)
 
 
@@ -333,14 +335,34 @@ func _finish_promotion(promote: bool) -> void:
 	var piece := _pending_piece
 	var point := _pending_point
 	_pending_piece = null
+	_pending_point = Vector2i.ZERO
+	_close_promotion_dialog()
 	_apply_move(piece, point, promote)
 
 
-## Clears any selection, so stale highlights do not survive undo or a move.
+## Cancels a pending promotion without applying the move, closing its prompt.
+## Called when the match is reset or replaced so a stale answer cannot apply to
+## the new position.
+func cancel_promotion() -> void:
+	_pending_piece = null
+	_pending_point = Vector2i.ZERO
+	_close_promotion_dialog()
+
+
+## Frees and forgets the promotion prompt, if one is open.
+func _close_promotion_dialog() -> void:
+	if _promotion_dialog != null:
+		_promotion_dialog.queue_free()
+		_promotion_dialog = null
+
+
+## Clears any selection and pending promotion, so stale highlights and prompts
+## do not survive undo, a move, a restart, or a new match.
 func clear_selection() -> void:
 	selected = null
 	_legal = []
 	_clear_hand_selection()
+	cancel_promotion()
 
 
 ## The shape comes from the owning side's army, so a Xiangqi piece captured and
