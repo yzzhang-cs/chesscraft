@@ -294,8 +294,9 @@ func _remove_from_hand(piece: Piece) -> void:
 
 ## True when a held `piece` may drop onto the point (column, row): the point is
 ## on the board and empty, and the piece is not a pawn/lance dropped onto the
-## enemy's back rank or a knight dropped onto the enemy's last two ranks. Drops
-## are always unpromoted.
+## enemy's back rank, a knight dropped onto the enemy's last two ranks, or a
+## captured 兵 dropped onto the far half (a dropped 兵 stays behind the river).
+## Drops are always unpromoted.
 func can_drop(piece: Piece, column: int, row: int) -> bool:
 	if piece == null or not hand_of(piece.side).has(piece):
 		return false
@@ -309,6 +310,9 @@ func can_drop(piece: Piece, column: int, row: int) -> bool:
 				return false
 		Piece.Kind.SHOGI_KNIGHT:
 			if Board.is_enemy_last_two_ranks(piece.side, row):
+				return false
+		Piece.Kind.XIANGQI_SOLDIER:
+			if not Board.is_on_own_side(piece.side, row):
 				return false
 	return true
 

@@ -61,13 +61,24 @@ static func _can_land(board: Match, piece: Piece, column: int, row: int) -> bool
 	return occupant == null or occupant.side != piece.side
 
 
+## True when `piece` is a Xiangqi-family piece now owned by a Shogi side -- a
+## captured 相 or 士 re-dropped by Shogi. Only such a piece is freed from its
+## river/palace confinement. (The dropped-兵 half-board rule is a drop-legality
+## concern handled in Match.can_drop, not here.)
+static func _is_freed(board: Match, piece: Piece) -> bool:
+	return piece.army != Army.Type.SHOGI and board.army_of(piece.side) == Army.Type.SHOGI
+
+
 ## General: one orthogonal step, confined to its own palace.
 static func _general(board: Match, piece: Piece) -> Array[Vector2i]:
 	return _palace_step(board, piece, _ORTHOGONAL)
 
 
-## Advisor: one diagonal step, confined to its own palace.
+## Advisor: one diagonal step, confined to its own palace. A freed advisor (a
+## captured 士 re-dropped by Shogi) steps one point diagonally anywhere.
 static func _advisor(board: Match, piece: Piece) -> Array[Vector2i]:
+	if _is_freed(board, piece):
+		return _steps(board, piece, _DIAGONAL)
 	return _palace_step(board, piece, _DIAGONAL)
 
 
@@ -83,13 +94,14 @@ static func _palace_step(board: Match, piece: Piece, directions: Array[Vector2i]
 
 
 ## Elephant: two diagonal steps, blocked by its eye (the midpoint), and unable
-## to cross the river.
+## to cross the river. A freed elephant (a captured 相 re-dropped by Shogi) may
+## cross the river; its eye still blocks.
 static func _elephant(board: Match, piece: Piece) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	for dir in _DIAGONAL:
 		var column := piece.column + dir.x * 2
 		var row := piece.row + dir.y * 2
-		if not Board.is_on_own_side(piece.side, row):
+		if not _is_freed(board, piece) and not Board.is_on_own_side(piece.side, row):
 			continue
 		if not _can_land(board, piece, column, row):
 			continue
